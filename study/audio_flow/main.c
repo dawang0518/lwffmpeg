@@ -92,10 +92,13 @@ int main(int argc, char **argv) {
              "avcodec_parameters_to_context");
     CHECK_AV(avcodec_open2(dec_ctx, decoder, NULL), "avcodec_open2");
 
-    printf("  解码器: %s (%s)\n", decoder->name, decoder->long_name);
+    /* long_name 在 FFmpeg --enable-small 编译时为 NULL; name 总是有效 */
+    printf("  解码器: %s (%s)\n", decoder->name,
+           decoder->long_name ? decoder->long_name : "");
     printf("  采样率: %d Hz\n", dec_ctx->sample_rate);
     printf("  声道数: %d\n", dec_ctx->ch_layout.nb_channels);
-    printf("  样本格式: %s\n", av_get_sample_fmt_name(dec_ctx->sample_fmt));
+    const char *sfmt_name = av_get_sample_fmt_name(dec_ctx->sample_fmt);
+    printf("  样本格式: %s\n", sfmt_name ? sfmt_name : "unknown");
 
     exit_code = 0;
 
