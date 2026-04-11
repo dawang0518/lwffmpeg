@@ -7,8 +7,7 @@
 .idea/
 *.swp
 
-# Third-party FFmpeg source checkout (do not commit)
-/ffmpeg/
+# FFmpeg source is tracked as a submodule (see .gitmodules); its build output is not
 /ffmpeg-build/
 
 # CMake build output
