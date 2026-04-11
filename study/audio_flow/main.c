@@ -25,7 +25,7 @@
     do {                                                                       \
         int _ret = (expr);                                                     \
         if (_ret < 0) {                                                        \
-            char _errbuf[128];                                                 \
+            char _errbuf[AV_ERROR_MAX_STRING_SIZE];                            \
             av_strerror(_ret, _errbuf, sizeof(_errbuf));                       \
             fprintf(stderr, "[ERR] %s: %s\n", (msg), _errbuf);                 \
             goto cleanup;                                                      \
@@ -39,6 +39,8 @@ int main(int argc, char **argv) {
     AVFormatContext *fmt_ctx = NULL;
 
     /* === 第1步: 打开网络输入 === */
+    /* 注意: 下面的 avformat_network_init 必须在任何 goto cleanup 之前,
+     * 因为 cleanup 里的 avformat_network_deinit 是无条件调用的. */
     printf("=== 第1步: 打开网络输入 ===\n");
     printf("  URL: %s\n", url);
     avformat_network_init();
