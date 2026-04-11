@@ -3,6 +3,7 @@ project(audio_flow C)
 
 set(CMAKE_C_STANDARD 11)
 set(CMAKE_C_STANDARD_REQUIRED ON)
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON)  # 让 clangd 找到 include 路径
 
 # 复用本地编译的 FFmpeg (同 video_flow)
 set(ENV{PKG_CONFIG_PATH} "${CMAKE_SOURCE_DIR}/../../ffmpeg-build/lib/pkgconfig")
