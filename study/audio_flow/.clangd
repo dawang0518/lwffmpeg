@@ -1,0 +1,7 @@
+CompileFlags:
+  CompilationDatabase: build
+  Add:
+    - -I/Users/admin/workspace/me/lwffmpeg/ffmpeg-build/include
+    - -I/opt/homebrew/include
+    - -I/opt/homebrew/include/SDL2
+    - -D_THREAD_SAFE
