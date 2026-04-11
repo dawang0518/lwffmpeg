@@ -1,0 +1,24 @@
+# macOS
+.DS_Store
+
+# Editor / IDE
+.obsidian/
+.vscode/
+.idea/
+*.swp
+
+# Third-party FFmpeg source checkout (do not commit)
+/ffmpeg/
+/ffmpeg-build/
+
+# CMake build output
+build/
+study/**/build/
+
+# clangd cache
+.cache/
+study/**/.cache/
+
+# Test fixtures / generated media
+study/video_flow/test.mp4
+study/video_flow/frame_*.pgm
