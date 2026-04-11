@@ -37,6 +37,8 @@ int main(int argc, char **argv) {
     int exit_code = 1;
 
     AVFormatContext *fmt_ctx = NULL;
+    AVCodecContext *dec_ctx = NULL;
+    int audio_stream_idx = -1;
 
     /* === 第1步: 打开网络输入 === */
     /* 注意: 下面的 avformat_network_init 必须在任何 goto cleanup 之前,
@@ -62,9 +64,43 @@ int main(int argc, char **argv) {
                type ? type : "unknown", codec);
     }
 
+
+    /* === 第3步: 查找音频流并打开解码器 === */
+    printf("\n=== 第3步: 查找音频流并打开解码器 ===\n");
+    audio_stream_idx = av_find_best_stream(
+        fmt_ctx, AVMEDIA_TYPE_AUDIO, -1, -1, NULL, 0);
+    if (audio_stream_idx < 0) {
+        fprintf(stderr, "[ERR] 未找到音频流\n");
+        goto cleanup;
+    }
+    printf("  音频流索引: %d\n", audio_stream_idx);
+
+    AVStream *audio_stream = fmt_ctx->streams[audio_stream_idx];
+    const AVCodec *decoder = avcodec_find_decoder(audio_stream->codecpar->codec_id);
+    if (!decoder) {
+        fprintf(stderr, "[ERR] 找不到解码器 (codec_id=%d)\n",
+                audio_stream->codecpar->codec_id);
+        goto cleanup;
+    }
+
+    dec_ctx = avcodec_alloc_context3(decoder);
+    if (!dec_ctx) {
+        fprintf(stderr, "[ERR] avcodec_alloc_context3 失败\n");
+        goto cleanup;
+    }
+    CHECK_AV(avcodec_parameters_to_context(dec_ctx, audio_stream->codecpar),
+             "avcodec_parameters_to_context");
+    CHECK_AV(avcodec_open2(dec_ctx, decoder, NULL), "avcodec_open2");
+
+    printf("  解码器: %s (%s)\n", decoder->name, decoder->long_name);
+    printf("  采样率: %d Hz\n", dec_ctx->sample_rate);
+    printf("  声道数: %d\n", dec_ctx->ch_layout.nb_channels);
+    printf("  样本格式: %s\n", av_get_sample_fmt_name(dec_ctx->sample_fmt));
+
     exit_code = 0;
 
 cleanup:
+    if (dec_ctx) avcodec_free_context(&dec_ctx);
     if (fmt_ctx) avformat_close_input(&fmt_ctx);
     avformat_network_deinit();
     return exit_code;
