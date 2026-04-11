@@ -47,6 +47,8 @@ int main(int argc, char **argv) {
     SwrContext *swr_ctx = NULL;
     SDL_AudioDeviceID audio_dev = 0;
     int sdl_inited = 0;
+    AVPacket *pkt = NULL;
+    AVFrame *frame = NULL;
 
     /* === 第1步: 打开网络输入 === */
     /* 注意: 下面的 avformat_network_init 必须在任何 goto cleanup 之前,
@@ -159,9 +161,110 @@ int main(int argc, char **argv) {
 
     SDL_PauseAudioDevice(audio_dev, 0);  /* 0 = unpause, 开始消费队列 */
 
+    /* === 第6步: 解码 + 播放 === */
+    printf("\n=== 第6步: 解码 + 播放 (Ctrl+C 中断) ===\n");
+
+    pkt = av_packet_alloc();
+    frame = av_frame_alloc();
+    if (!pkt || !frame) {
+        fprintf(stderr, "[ERR] 分配 packet/frame 失败\n");
+        goto cleanup;
+    }
+
+    const int out_bytes_per_sample = OUT_CHANNELS * av_get_bytes_per_sample(OUT_SAMPLE_FMT);
+    int64_t total_frames = 0;
+
+    while (av_read_frame(fmt_ctx, pkt) >= 0) {
+        if (pkt->stream_index != audio_stream_idx) {
+            av_packet_unref(pkt);
+            continue;
+        }
+
+        int ret = avcodec_send_packet(dec_ctx, pkt);
+        av_packet_unref(pkt);
+        if (ret < 0) {
+            fprintf(stderr, "[WARN] avcodec_send_packet: %d\n", ret);
+            continue;
+        }
+
+        while ((ret = avcodec_receive_frame(dec_ctx, frame)) >= 0) {
+            /* 计算输出采样数 (考虑 swr 内部延迟) */
+            int64_t delay = swr_get_delay(swr_ctx, dec_ctx->sample_rate);
+            int out_samples = (int)av_rescale_rnd(
+                delay + frame->nb_samples,
+                OUT_SAMPLE_RATE, dec_ctx->sample_rate, AV_ROUND_UP);
+
+            uint8_t *out_buf = NULL;
+            int out_linesize = 0;
+            int alloc_ret = av_samples_alloc(
+                &out_buf, &out_linesize,
+                OUT_CHANNELS, out_samples, OUT_SAMPLE_FMT, 0);
+            if (alloc_ret < 0) {
+                fprintf(stderr, "[ERR] av_samples_alloc\n");
+                av_frame_unref(frame);
+                goto cleanup;
+            }
+
+            int converted = swr_convert(
+                swr_ctx, &out_buf, out_samples,
+                (const uint8_t **)frame->extended_data, frame->nb_samples);
+            if (converted < 0) {
+                fprintf(stderr, "[ERR] swr_convert\n");
+                av_freep(&out_buf);
+                av_frame_unref(frame);
+                goto cleanup;
+            }
+
+            int queue_bytes = converted * out_bytes_per_sample;
+            if (SDL_QueueAudio(audio_dev, out_buf, queue_bytes) < 0) {
+                fprintf(stderr, "[ERR] SDL_QueueAudio: %s\n", SDL_GetError());
+                av_freep(&out_buf);
+                av_frame_unref(frame);
+                goto cleanup;
+            }
+            av_freep(&out_buf);
+
+            /* 节流：队列 > 1MB 时等待，防止内存膨胀 */
+            while (SDL_GetQueuedAudioSize(audio_dev) > 1024 * 1024) {
+                SDL_Delay(10);
+            }
+
+            if ((total_frames % 50) == 0) {
+                printf("  [frame %lld] in=%d out=%d queued=%uKB\n",
+                       (long long)total_frames, frame->nb_samples, converted,
+                       SDL_GetQueuedAudioSize(audio_dev) / 1024);
+            }
+            total_frames++;
+            av_frame_unref(frame);
+        }
+
+        if (ret != AVERROR(EAGAIN) && ret != AVERROR_EOF && ret < 0) {
+            char errbuf[128];
+            av_strerror(ret, errbuf, sizeof(errbuf));
+            fprintf(stderr, "[ERR] avcodec_receive_frame: %s\n", errbuf);
+            goto cleanup;
+        }
+    }
+
+    /* 刷新解码器剩余帧 */
+    avcodec_send_packet(dec_ctx, NULL);
+    while (avcodec_receive_frame(dec_ctx, frame) >= 0) {
+        av_frame_unref(frame);
+    }
+
+    /* 等 SDL 把队列里的音频全部播完 */
+    printf("  等待播放完成...\n");
+    while (SDL_GetQueuedAudioSize(audio_dev) > 0) {
+        SDL_Delay(100);
+    }
+
+    printf("\n=== 完成: 共解码 %lld 帧 ===\n", (long long)total_frames);
+
     exit_code = 0;
 
 cleanup:
+    if (frame) av_frame_free(&frame);
+    if (pkt) av_packet_free(&pkt);
     if (audio_dev) SDL_CloseAudioDevice(audio_dev);
     if (sdl_inited) SDL_Quit();
     swr_free(&swr_ctx);
