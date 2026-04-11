@@ -246,7 +246,11 @@ int main(int argc, char **argv) {
         }
     }
 
-    /* 刷新解码器剩余帧 */
+    /* 刷新解码器剩余帧。
+     * 学习示例简化: 这里只排空解码器, 未把 flush 出来的帧送去 swr_convert
+     * 和 SDL_QueueAudio, 因此末尾几毫秒的音频 + swr 内部延迟会被丢弃。
+     * 生产代码应复用上面的重采样/送队列逻辑, 并在最后调用
+     * swr_convert(swr_ctx, &out_buf, out_samples, NULL, 0) 排空 swr 延迟。 */
     avcodec_send_packet(dec_ctx, NULL);
     while (avcodec_receive_frame(dec_ctx, frame) >= 0) {
         av_frame_unref(frame);
