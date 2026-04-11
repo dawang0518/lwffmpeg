@@ -21,6 +21,11 @@
 
 #define DEFAULT_URL "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3"
 
+/* SDL 输出目标格式（固定） */
+#define OUT_SAMPLE_RATE 44100
+#define OUT_SAMPLE_FMT  AV_SAMPLE_FMT_S16
+#define OUT_CHANNELS    2
+
 #define CHECK_AV(expr, msg)                                                    \
     do {                                                                       \
         int _ret = (expr);                                                     \
@@ -39,6 +44,7 @@ int main(int argc, char **argv) {
     AVFormatContext *fmt_ctx = NULL;
     AVCodecContext *dec_ctx = NULL;
     int audio_stream_idx = -1;
+    SwrContext *swr_ctx = NULL;
 
     /* === 第1步: 打开网络输入 === */
     /* 注意: 下面的 avformat_network_init 必须在任何 goto cleanup 之前,
@@ -100,9 +106,38 @@ int main(int argc, char **argv) {
     const char *sfmt_name = av_get_sample_fmt_name(dec_ctx->sample_fmt);
     printf("  样本格式: %s\n", sfmt_name ? sfmt_name : "unknown");
 
+
+    /* === 第4步: 配置 SwrContext === */
+    printf("\n=== 第4步: 配置 SwrContext ===\n");
+
+    AVChannelLayout out_ch_layout;
+    av_channel_layout_default(&out_ch_layout, OUT_CHANNELS);
+
+    CHECK_AV(swr_alloc_set_opts2(
+                 &swr_ctx,
+                 &out_ch_layout, OUT_SAMPLE_FMT, OUT_SAMPLE_RATE,
+                 &dec_ctx->ch_layout, dec_ctx->sample_fmt, dec_ctx->sample_rate,
+                 0, NULL),
+             "swr_alloc_set_opts2");
+    CHECK_AV(swr_init(swr_ctx), "swr_init");
+
+    av_channel_layout_uninit(&out_ch_layout);
+
+    const char *in_fmt = av_get_sample_fmt_name(dec_ctx->sample_fmt);
+    const char *out_fmt = av_get_sample_fmt_name(OUT_SAMPLE_FMT);
+    printf("  输入:  %d Hz | %-6s | %d ch\n",
+           dec_ctx->sample_rate,
+           in_fmt ? in_fmt : "unknown",
+           dec_ctx->ch_layout.nb_channels);
+    printf("  输出:  %d Hz | %-6s | %d ch\n",
+           OUT_SAMPLE_RATE,
+           out_fmt ? out_fmt : "unknown",
+           OUT_CHANNELS);
+
     exit_code = 0;
 
 cleanup:
+    if (swr_ctx) swr_free(&swr_ctx);
     if (dec_ctx) avcodec_free_context(&dec_ctx);
     if (fmt_ctx) avformat_close_input(&fmt_ctx);
     avformat_network_deinit();
