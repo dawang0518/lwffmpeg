@@ -4,7 +4,6 @@
  * 流程: avformat_open_input(HTTP) -> decode -> swresample -> SDL_QueueAudio
  *
  * 用法: ./audio_flow [url-or-file]
- *       默认播放 SoundHelix 的公开测试 MP3
  */
 #include <stdio.h>
 #include <stdlib.h>
@@ -22,12 +21,49 @@
 
 #define DEFAULT_URL "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3"
 
+#define CHECK_AV(expr, msg)                                                    \
+    do {                                                                       \
+        int _ret = (expr);                                                     \
+        if (_ret < 0) {                                                        \
+            char _errbuf[128];                                                 \
+            av_strerror(_ret, _errbuf, sizeof(_errbuf));                       \
+            fprintf(stderr, "[ERR] %s: %s\n", (msg), _errbuf);                 \
+            goto cleanup;                                                      \
+        }                                                                      \
+    } while (0)
+
 int main(int argc, char **argv) {
     const char *url = (argc > 1) ? argv[1] : DEFAULT_URL;
-    printf("audio_flow scaffolding OK\n");
+    int exit_code = 1;
+
+    AVFormatContext *fmt_ctx = NULL;
+
+    /* === 第1步: 打开网络输入 === */
+    printf("=== 第1步: 打开网络输入 ===\n");
     printf("  URL: %s\n", url);
-    printf("  FFmpeg: %s\n", av_version_info());
-    printf("  SDL2:   %d.%d.%d\n",
-           SDL_MAJOR_VERSION, SDL_MINOR_VERSION, SDL_PATCHLEVEL);
-    return 0;
+    avformat_network_init();
+    CHECK_AV(avformat_open_input(&fmt_ctx, url, NULL, NULL),
+             "avformat_open_input");
+
+    /* === 第2步: 探测流信息 === */
+    printf("\n=== 第2步: 探测流信息 ===\n");
+    CHECK_AV(avformat_find_stream_info(fmt_ctx, NULL),
+             "avformat_find_stream_info");
+    printf("  容器格式: %s\n", fmt_ctx->iformat->name);
+    printf("  时长: %.2f 秒\n", (double)fmt_ctx->duration / AV_TIME_BASE);
+    printf("  流数量: %u\n", fmt_ctx->nb_streams);
+    for (unsigned i = 0; i < fmt_ctx->nb_streams; i++) {
+        AVStream *st = fmt_ctx->streams[i];
+        const char *type = av_get_media_type_string(st->codecpar->codec_type);
+        const char *codec = avcodec_get_name(st->codecpar->codec_id);
+        printf("  流 #%u: 类型=%s, 编码=%s\n", i,
+               type ? type : "unknown", codec);
+    }
+
+    exit_code = 0;
+
+cleanup:
+    if (fmt_ctx) avformat_close_input(&fmt_ctx);
+    avformat_network_deinit();
+    return exit_code;
 }
