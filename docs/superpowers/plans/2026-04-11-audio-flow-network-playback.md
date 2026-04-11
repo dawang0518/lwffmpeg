@@ -532,11 +532,13 @@ git commit -m "feat(audio_flow): set up swresample to target s16/44100/stereo"
 
 - [ ] **Step 3: 在 cleanup 标签中添加 SDL 释放**
 
-在 cleanup 标签下，**最前面**（`if (swr_ctx)` 之前）添加：
+在 cleanup 标签下，**最前面**（`swr_free(&swr_ctx);` 之前）添加：
 ```c
     if (audio_dev) SDL_CloseAudioDevice(audio_dev);
     if (sdl_inited) SDL_Quit();
 ```
+
+注意：SDL 的清理需要保留条件守卫，因为 `SDL_CloseAudioDevice(0)` 和未初始化后的 `SDL_Quit()` 行为不同（不像 FFmpeg 的 free 函数对 NULL 安全）。
 
 - [ ] **Step 4: 构建**
 
