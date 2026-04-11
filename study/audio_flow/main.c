@@ -110,8 +110,7 @@ int main(int argc, char **argv) {
     /* === 第4步: 配置 SwrContext === */
     printf("\n=== 第4步: 配置 SwrContext ===\n");
 
-    AVChannelLayout out_ch_layout;
-    av_channel_layout_default(&out_ch_layout, OUT_CHANNELS);
+    AVChannelLayout out_ch_layout = AV_CHANNEL_LAYOUT_STEREO;
 
     CHECK_AV(swr_alloc_set_opts2(
                  &swr_ctx,
@@ -120,8 +119,6 @@ int main(int argc, char **argv) {
                  0, NULL),
              "swr_alloc_set_opts2");
     CHECK_AV(swr_init(swr_ctx), "swr_init");
-
-    av_channel_layout_uninit(&out_ch_layout);
 
     const char *in_fmt = av_get_sample_fmt_name(dec_ctx->sample_fmt);
     const char *out_fmt = av_get_sample_fmt_name(OUT_SAMPLE_FMT);
@@ -137,9 +134,9 @@ int main(int argc, char **argv) {
     exit_code = 0;
 
 cleanup:
-    if (swr_ctx) swr_free(&swr_ctx);
-    if (dec_ctx) avcodec_free_context(&dec_ctx);
-    if (fmt_ctx) avformat_close_input(&fmt_ctx);
+    swr_free(&swr_ctx);
+    avcodec_free_context(&dec_ctx);
+    avformat_close_input(&fmt_ctx);
     avformat_network_deinit();
     return exit_code;
 }
