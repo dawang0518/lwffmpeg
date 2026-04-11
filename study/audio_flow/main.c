@@ -45,6 +45,8 @@ int main(int argc, char **argv) {
     AVCodecContext *dec_ctx = NULL;
     int audio_stream_idx = -1;
     SwrContext *swr_ctx = NULL;
+    SDL_AudioDeviceID audio_dev = 0;
+    int sdl_inited = 0;
 
     /* === 第1步: 打开网络输入 === */
     /* 注意: 下面的 avformat_network_init 必须在任何 goto cleanup 之前,
@@ -131,9 +133,37 @@ int main(int argc, char **argv) {
            out_fmt ? out_fmt : "unknown",
            OUT_CHANNELS);
 
+    /* === 第5步: 初始化 SDL 音频设备 === */
+    printf("\n=== 第5步: 初始化 SDL 音频设备 ===\n");
+    if (SDL_Init(SDL_INIT_AUDIO) < 0) {
+        fprintf(stderr, "[ERR] SDL_Init: %s\n", SDL_GetError());
+        goto cleanup;
+    }
+    sdl_inited = 1;
+
+    SDL_AudioSpec want = {0};
+    want.freq = OUT_SAMPLE_RATE;
+    want.format = AUDIO_S16SYS;
+    want.channels = OUT_CHANNELS;
+    want.samples = 1024;
+    want.callback = NULL;  /* 使用 SDL_QueueAudio push 模式 */
+
+    SDL_AudioSpec have;
+    audio_dev = SDL_OpenAudioDevice(NULL, 0, &want, &have, 0);
+    if (audio_dev == 0) {
+        fprintf(stderr, "[ERR] SDL_OpenAudioDevice: %s\n", SDL_GetError());
+        goto cleanup;
+    }
+    printf("  设备: freq=%d format=0x%04x channels=%d samples=%d\n",
+           have.freq, have.format, have.channels, have.samples);
+
+    SDL_PauseAudioDevice(audio_dev, 0);  /* 0 = unpause, 开始消费队列 */
+
     exit_code = 0;
 
 cleanup:
+    if (audio_dev) SDL_CloseAudioDevice(audio_dev);
+    if (sdl_inited) SDL_Quit();
     swr_free(&swr_ctx);
     avcodec_free_context(&dec_ctx);
     avformat_close_input(&fmt_ctx);
